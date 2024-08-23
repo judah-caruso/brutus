@@ -1,6 +1,6 @@
 # Brutus
 
-Cross-platform LuaJIT engine.
+Cross-platform runner for brut files.
 
 
 ## Building
