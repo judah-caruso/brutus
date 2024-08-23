@@ -87,6 +87,9 @@ static int LuaLoadChunkFromBundle(lua_State*);
 const char* LUA_REQUIRE_OVERLOAD_SOURCE =
    "local __oldrequire = require\n"
    "require = function(name)\n"
+   "  if package.preload[name] ~= nil then\n"
+   "     return package.preload[name]\n"
+   "  end\n"
    "  local mod = ___loadchunkfrombundle___(name)\n"
    "  if mod ~= nil then\n"
    "     package.preload[name] = loadstring(mod)()\n"
