@@ -140,6 +140,32 @@ Decode(const char* in, int len, int* out_len)
 }
 
 static bool
+SetWorkingDirectory(const char* path)
+{
+#if defined(PLATFORM_WINDOWS)
+   return SetCurrentDirectory(path);
+#else
+   return false; // @todo: unix
+#endif
+}
+
+static char*
+GetExePath()
+{
+#if defined(PLATFORM_WINDOWS)
+   char buf[MAX_PATH] = {0};
+
+   HANDLE h = GetModuleHandleA(0);
+   DWORD l = GetModuleFileNameA(h, buf, MAX_PATH);
+
+   buf[l] = '\0';
+   return CopyString(buf);
+#else
+   return ""; // @todo: unix
+#endif
+}
+
+static bool
 ListDirectory(const char* path, char*** out_entries)
 {
 #if defined(PLATFORM_WINDOWS)

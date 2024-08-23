@@ -136,11 +136,31 @@ main(int argc, char* argv[])
    if (ship) {
       if (!CreateBrutFile()) {
          Log("unable to create %s", BRUT_FILE);
-         return 1;
+         return 2;
       }
 
       Log("wrote %s", BRUT_FILE);
       return 0;
+   }
+
+   char* exe_path = GetExePath();
+   for (int i = strlen(exe_path); i >= 0; i -= 1) {
+   #if defined(PLATFORM_WINDOWS)
+      if (exe_path[i] == '\\') {
+         exe_path[i] = '\0';
+         break;
+      }
+   #else
+      if (exe_path[i] == '/') {
+         exe_path[i] = '\0';
+         break;
+      }
+   #endif
+   }
+
+   if (!SetWorkingDirectory(exe_path)) {
+      Log("unable to set working directory");
+      return 1;
    }
 
    lua_State* L = luaL_newstate();
@@ -192,7 +212,7 @@ main(int argc, char* argv[])
          Log("failed to load entrypoint chunk");
       }
 
-      exit_code = 1;
+      exit_code = 2;
       goto cleanup;
    }
 
@@ -202,7 +222,7 @@ main(int argc, char* argv[])
 
    if (lua_pcall(L, argc, 0, 0) != 0) {
       Log("error: %s", lua_tostring(L, -1));
-      exit_code = 1;
+      exit_code = 2;
       goto cleanup;
    }
 
@@ -298,7 +318,7 @@ LoadBrutFile()
       if (compressed) {
          char* decomp = Decompress(decoded, decoded_length);
          if (!decomp) {
-            Log("failed to decompress entry %d (%d:%d)", i, entry_length, decoded_length);
+            Log("failed to decompress entry %d (%d, %d)", i, entry_length, decoded_length);
             return 0;
          }
 
