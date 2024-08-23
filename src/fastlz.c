@@ -23,8 +23,10 @@
 
 #include <stdint.h>
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
+#if defined(__GNUC__)
+  #pragma GCC diagnostic push
+  #pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
+#endif
 
 /*
  * Give hints to the compiler for branch prediction optimization.
@@ -503,4 +505,6 @@ int fastlz_compress_level(int level, const void* input, int length, void* output
   return 0;
 }
 
-#pragma GCC diagnostic pop
+#if defined(__GNUC__)
+  #pragma GCC diagnostic pop
+#endif

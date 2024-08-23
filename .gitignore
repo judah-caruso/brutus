@@ -2,3 +2,9 @@
 brut
 brut.dat
 brutus
+*.pdb
+*.obj
+*.exp
+*.exe
+*.lib
+*.raddbgi

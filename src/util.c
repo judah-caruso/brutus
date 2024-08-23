@@ -61,10 +61,9 @@ BufPrint(char** buf, const char* fmt, ...) {
    va_list args;
    va_start(args, fmt);
    size_t len = vsnprintf(NULL, 0, fmt, args);
-   va_end(args);
-
    char* ptr = stbds_arraddnptr(*buf, len);
    vsnprintf(ptr, len, fmt, args);
+   va_end(args);
 }
 
 static void
@@ -141,6 +140,90 @@ Decode(const char* in, int len, int* out_len)
 }
 
 static bool
+ListDirectory(const char* path, char*** out_entries)
+{
+#if defined(PLATFORM_WINDOWS)
+   WIN32_FIND_DATA fd = {0};
+
+   HWND h = FindFirstFileA(path, &fd);
+   if (h == INVALID_HANDLE_VALUE)
+      { return false; }
+
+   do {
+      if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+         { continue; }
+
+      stbds_arrput(*out_entries, CopyString(fd.cFileName));
+   } while (FindNextFileA(h, &fd));
+#else
+   DIR* dir = opendir(path);
+   if (!dir)
+      { return false; }
+
+   struct dirent* ent = 0;
+   while ((ent = readdir(dir)) != 0) {
+      stbds_arrput(*out_entries, CopyString(ent->d_name));
+   }
+#endif
+
+   return true;
+}
+
+#if PLATFORM_WINDOWS
+static bool
+FileExists(const char* path)
+{
+   return PathFileExistsA(path);
+}
+
+static char*
+ReadEntireFile(const char* path)
+{
+   HANDLE fh = CreateFileA(path, FILE_GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+   if (fh == INVALID_HANDLE_VALUE)
+      { return 0; }
+
+   LARGE_INTEGER size = {0};
+   if (!GetFileSizeEx(fh, &size)) {
+      CloseHandle(fh);
+      return 0;
+   }
+
+   int length = (int)size.QuadPart;
+   char* buf = malloc(length + 1);
+
+   int read = 0;
+   if (!ReadFile(fh, buf, length, &read, 0) || read != length) {
+      free(buf);
+      CloseHandle(fh);
+      return 0;
+   }
+
+   buf[length] = '\0';
+   CloseHandle(fh);
+
+   return buf;
+}
+
+static bool
+WriteEntireFile(const char* path, const char* data, size_t len)
+{
+   HANDLE fh = CreateFileA(path, FILE_GENERIC_READ|FILE_GENERIC_WRITE, FILE_SHARE_READ, 0, CREATE_ALWAYS, 0, 0);
+   if (fh == INVALID_HANDLE_VALUE)
+      { return 0; }
+
+   int wrote = 0;
+   if (!WriteFile(fh, data, len, &wrote, 0) || wrote != len) {
+      CloseHandle(fh);
+      return false;
+   }
+
+   return true;
+}
+
+#else
+
+static bool
 FileExists(const char* path)
 {
    FILE* file = fopen(path, "r");
@@ -199,3 +282,5 @@ WriteEntireFile(const char* path, const char* data, size_t len)
 
    return written == len;
 }
+
+#endif

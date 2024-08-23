@@ -23,8 +23,14 @@
 #include <stdbool.h>
 #include <string.h>
 
-#include <dirent.h>
-#include <sys/stat.h>
+#if defined(_WIN32) || defined(_WIN64)
+   #define WIN32_LEAN_AND_MEAN
+   #include <windows.h>
+   #include <shlwapi.h>
+#elif defined(__APPLE__) || defined(__unix__)
+   #include <dirent.h>
+   #include <sys/stat.h>
+#endif
 
 #include "lua.h"
 #include "lualib.h"
@@ -42,19 +48,22 @@
 #define BRUT_FILE_MINOR 0
 #define BRUT_FILE_MIN_COMPRESS_SIZE 16
 
-#if defined(_WIN32)
+#if defined(_WIN32) || defined(_WIN64)
    #define OS_NAME "windows"
+   #define PLATFORM_WINDOWS 1
 #elif defined(__APPLE__)
    #define OS_NAME "darwin"
+   #define PLATFORM_DARWIN 1
 #elif defined(__unix__)
    #define OS_NAME "unix"
+   #define PLATFORM_UNIX 1
 #else
    #error "Unsupported platform"
 #endif
 
-#if defined(__x86_64__)
+#if defined(__x86_64__) || defined(_WIN64)
    #define ARCH_NAME "x86-64"
-#elif defined(__i386__)
+#elif defined(__i386__) || defined(_WIN32)
    #define ARCH_NAME "x86"
 #elif defined(__arm__)
    #define ARCH_NAME "arm32"
@@ -99,7 +108,6 @@ main(int argc, char* argv[])
       { exe_name = argv[0]; }
 
    // process command line arguments
-
    bool ship = false;
    while (argc > 0) {
       int len = strlen(argv[0]);
@@ -263,7 +271,7 @@ LoadBrutFile()
    // decode and decompress each chunk in the file
    for (int i = 0; i < total_entries; i += 1) {
       char* name = &datfile[off];
-      off += strlen(name);
+      off += strlen(name) + 1;
 
       bool compressed = datfile[off];
       off += 1;
@@ -305,27 +313,31 @@ LoadBrutFile()
 static bool
 CreateBrutFile()
 {
-   DIR* dir = opendir(".");
-   if (!dir)
-      { return false; }
-
    char** files = 0;
    char** names = 0;
 
    // mark each .lua file for processing.
    // the order of files does not matter.
-   struct dirent* ent = 0;
-   while ((ent = readdir(dir)) != 0) {
-      if (!EndsWith(ent->d_name, ".lua"))
+   char** entries = 0;
+
+   #if PLATFORM_WINDOWS
+      ListDirectory("*.*", &entries);
+   #else
+      ListDirectory(".", &entries);
+   #endif
+
+   for (int i = 0; i < stbds_arrlen(entries); i += 1) {
+      char* entry = entries[i];
+      if (!EndsWith(entry, ".lua"))
          { continue; }
 
-      char* data = ReadEntireFile(ent->d_name);
+      char* data = ReadEntireFile(entry);
       if (!data) {
-         Log("unable add '%s' to %s", ent->d_name, BRUT_FILE);
+         Log("unable add '%s' to %s", entry, BRUT_FILE);
          return false;
       }
 
-      char* name = CopyString(ent->d_name);
+      char* name = CopyString(entry);
       for (int i = strlen(name) - 1; i >= 0; i -= 1) {
          if (name[i] == '.') {
             name[i] = '\0';
@@ -336,6 +348,8 @@ CreateBrutFile()
       stbds_arrput(files, data);
       stbds_arrput(names, name);
    }
+
+   stbds_arrfree(entries);
 
    // a brut file (little-endian) starts with the following structure:
    // magic number (4-byte 'brut')
@@ -369,6 +383,7 @@ CreateBrutFile()
       char* enc = Encode(comp, comp_size, &enc_size);
 
       BufPush(&buffer, name);
+      BufPushLen(&buffer, "\0", 1);
       BufPushLen(&buffer, (char *)&did_comp, 1);
       BufPushLen(&buffer, (char *)&enc_size, 4);
       BufPushLen(&buffer, enc, enc_size);
