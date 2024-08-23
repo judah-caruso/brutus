@@ -144,6 +144,12 @@ main(int argc, char* argv[])
    char* chunk  = 0;
    bool bundled = FileExists(BRUT_FILE);
 
+   // setup the runtime and open all extension libraries
+   {
+      luaL_openlibs(L);
+      OpenPlatform(L, bundled);
+   }
+
    // try to load brut.dat or main.lua
    if (bundled) {
       chunk = LoadBrutFile();
@@ -152,6 +158,7 @@ main(int argc, char* argv[])
       // for modules contained within the bundle.
       lua_pushcclosure(L, LuaLoadChunkFromBundle, 1);
       lua_setfield(L, LUA_GLOBALSINDEX, "___loadchunkfrombundle___");
+
       luaL_loadstring(L, LUA_REQUIRE_OVERLOAD_SOURCE);
       lua_call(L, 0, 0);
    }
@@ -159,11 +166,6 @@ main(int argc, char* argv[])
       chunk = ReadEntireFile("main.lua");
    }
 
-   // setup the runtime and load the chunk we found.
-   {
-      luaL_openlibs(L);
-      OpenPlatform(L, bundled);
-   }
 
    int exit_code = 0;
 
@@ -180,6 +182,7 @@ main(int argc, char* argv[])
       goto cleanup;
    }
 
+   // load and run the entrypoint chunk.
    luaJIT_setmode(L, 0, LUAJIT_MODE_ENGINE | LUAJIT_MODE_MAX);
    if (luaL_loadbuffer(L, chunk, strlen(chunk), "main.lua") != 0) {
       if (bundled) {
