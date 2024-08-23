@@ -35,12 +35,12 @@
 #define STBDS_NO_SHORT_NAMES
 #include "stb_ds.h"
 
+#define BRUTUS_VERSION "1.0.0"
+
 #define BRUT_FILE "brut.dat"
 #define BRUT_FILE_MAJOR 1
 #define BRUT_FILE_MINOR 0
-
-#define BRUT_VERSION "1.0.0"
-#define BRUT_MIN_COMPRESS_SIZE 16
+#define BRUT_FILE_MIN_COMPRESS_SIZE 16
 
 #if defined(_WIN32)
    #define OS_NAME "windows"
@@ -94,9 +94,11 @@ char** CHUNKS  = 0;
 int
 main(int argc, char* argv[])
 {
-   char* exe_name = "brut";
+   char* exe_name = "brutus";
    if (argc > 0)
       { exe_name = argv[0]; }
+
+   // process command line arguments
 
    bool ship = false;
    while (argc > 0) {
@@ -105,7 +107,7 @@ main(int argc, char* argv[])
          { ship = true; }
 
       if (strncmp(argv[0], "-h", len) == 0) {
-         printf("brut version %s (%d.%d)\n   usage: %s [-h] -- <args>\n", BRUT_VERSION, BRUT_FILE_MINOR, BRUT_FILE_MAJOR, exe_name);
+         printf("brutus version %s (%d.%d)\n   usage: %s [-h] -- <args>\n", BRUTUS_VERSION, BRUT_FILE_MINOR, BRUT_FILE_MAJOR, exe_name);
          return 0;
       }
 
@@ -119,9 +121,10 @@ main(int argc, char* argv[])
       argv += 1;
    }
 
+   // if 'ship' was passed we should create a brut file rather than run one.
    if (ship) {
       if (!CreateBrutFile()) {
-         Log("unable to create brutfile");
+         Log("unable to create %s", BRUT_FILE);
          return 1;
       }
 
@@ -130,18 +133,15 @@ main(int argc, char* argv[])
    }
 
    lua_State* L = luaL_newstate();
+   char* chunk  = 0;
    bool bundled = FileExists(BRUT_FILE);
 
-   {
-      luaL_openlibs(L);
-      OpenPlatform(L, bundled);
-   }
-
-   char* chunk = 0;
+   // try to load brut.dat or main.lua
    if (bundled) {
       chunk = LoadBrutFile();
 
-      // preload overloaded version of 'require'
+      // if we're in a bundled context, overload 'require' to look
+      // for modules contained within the bundle.
       lua_pushcclosure(L, LuaLoadChunkFromBundle, 1);
       lua_setfield(L, LUA_GLOBALSINDEX, "___loadchunkfrombundle___");
       luaL_loadstring(L, LUA_REQUIRE_OVERLOAD_SOURCE);
@@ -151,10 +151,23 @@ main(int argc, char* argv[])
       chunk = ReadEntireFile("main.lua");
    }
 
+   // setup the runtime and load the chunk we found.
+   {
+      luaL_openlibs(L);
+      OpenPlatform(L, bundled);
+   }
+
    int exit_code = 0;
 
    if (!chunk) {
-      Log("no brut.dat or main.lua found");
+      // If we're bundled with no main chunk, the brut file
+      // didn't contain one, and that's not necessarily an error.
+      if (bundled) {
+         exit_code = 0;
+         goto cleanup;
+      }
+
+      Log("no %s or main.lua found", BRUT_FILE);
       exit_code = 1;
       goto cleanup;
    }
@@ -169,6 +182,7 @@ main(int argc, char* argv[])
       goto cleanup;
    }
 
+   // push command-line arguments and run the chunk.
    for (int i = 0; i < argc; i += 1)
       { lua_pushstring(L, argv[i]); }
 
@@ -223,6 +237,7 @@ LoadBrutFile()
    if (!datfile)
       { return 0; }
 
+   // check the magic number
    int len = strlen(datfile);
    if (len < 4 || strncmp(datfile, "brut", 4) != 0) {
       Log("malformed header");
@@ -231,6 +246,7 @@ LoadBrutFile()
 
    unsigned int off = 4;
 
+   // ensure version number matches the current runtime
    unsigned char major = datfile[off];
    unsigned char minor = datfile[off+1];
    if (major != BRUT_FILE_MAJOR || minor != BRUT_FILE_MINOR) {
@@ -240,26 +256,21 @@ LoadBrutFile()
 
    off += 2;
 
-   char* raw_entries = datfile + off;
-   while (off < len && datfile[off] != '\0')
-         { off += 1; }
+   // get number of entries in the brut file
+   unsigned short total_entries = *((unsigned short*)&datfile[off]);
+   off += 2;
 
-   char* end = 0;
-   int total_entries = strtol(raw_entries, &end, 10);
-
-   off += (int)(end - raw_entries) + 1;
-
+   // decode and decompress each chunk in the file
    for (int i = 0; i < total_entries; i += 1) {
       char* name = &datfile[off];
-      off += strlen(name) + 1;
+      off += strlen(name);
 
       bool compressed = datfile[off];
       off += 1;
 
-      char* raw_entry_length = &datfile[off];
-      off += strlen(raw_entry_length) + 1;
+      unsigned int entry_length = *((unsigned int*)&datfile[off]);
+      off += 4;
 
-      int entry_length = strtol(raw_entry_length, &end, 10);
       char* encoded = &datfile[off];
 
       int decoded_length = 0;
@@ -287,6 +298,7 @@ LoadBrutFile()
       off += entry_length;
    }
 
+   // the entrypoint chunk will always be called 'main'
    return GetChunk("main");
 }
 
@@ -300,6 +312,8 @@ CreateBrutFile()
    char** files = 0;
    char** names = 0;
 
+   // mark each .lua file for processing.
+   // the order of files does not matter.
    struct dirent* ent = 0;
    while ((ent = readdir(dir)) != 0) {
       if (!EndsWith(ent->d_name, ".lua"))
@@ -307,7 +321,7 @@ CreateBrutFile()
 
       char* data = ReadEntireFile(ent->d_name);
       if (!data) {
-         Log("unable add '%s' to brutfile", ent->d_name);
+         Log("unable add '%s' to %s", ent->d_name, BRUT_FILE);
          return false;
       }
 
@@ -323,14 +337,27 @@ CreateBrutFile()
       stbds_arrput(names, name);
    }
 
+   // a brut file (little-endian) starts with the following structure:
+   // magic number (4-byte 'brut')
+   // major version (byte > 0)
+   // minor version (byte >= 0)
+   // total entries (unsigned 16-bit integer)
    char* buffer = 0;
 
-   BufPush(&buffer, "brut");
-   stbds_arrput(buffer, BRUT_FILE_MAJOR);
-   stbds_arrput(buffer, BRUT_FILE_MINOR);
-   BufPrint(&buffer, "%zu", stbds_arrlen(names));
+   BufPrint(&buffer, "brut%c%c", BRUT_FILE_MAJOR, BRUT_FILE_MINOR);
 
-   for (int i = 0; i < stbds_arrlen(names); i += 1) {
+   unsigned short total_names = stbds_arrlen(names);
+   BufPushLen(&buffer, (char *)&total_names, 2);
+
+   // entries are placed sequentially and have the following structure:
+   // name (null-terminated string)
+   // compression marker (byte 0-1)
+   // payload size (unsigned 32-bit integer)
+   // payload (null-terminated string)
+   //    this will always be base64 encoded.
+   //    if the compression marker is 1, the
+   //    payload is lz4 compressed.
+   for (int i = 0; i < total_names; i += 1) {
       char* name = names[i];
       Log("processing '%s.lua'", name);
 
@@ -341,9 +368,9 @@ CreateBrutFile()
       int enc_size = 0;
       char* enc = Encode(comp, comp_size, &enc_size);
 
-      BufPrint(&buffer, name);
-      stbds_arrput(buffer, did_comp ? 1 : 0);
-      BufPrint(&buffer, "%zu", enc_size);
+      BufPush(&buffer, name);
+      BufPushLen(&buffer, (char *)&did_comp, 1);
+      BufPushLen(&buffer, (char *)&enc_size, 4);
       BufPushLen(&buffer, enc, enc_size);
 
       free(comp);
@@ -355,7 +382,7 @@ CreateBrutFile()
 
    if (!WriteEntireFile(BRUT_FILE, buffer, stbds_arrlen(buffer))) {
       stbds_arrfree(buffer);
-      Log("failed to create brutfile");
+      Log("failed to create %s", BRUT_FILE);
       return false;
    }
 

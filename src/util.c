@@ -63,15 +63,14 @@ BufPrint(char** buf, const char* fmt, ...) {
    size_t len = vsnprintf(NULL, 0, fmt, args);
    va_end(args);
 
-   char* ptr = stbds_arraddnptr(*buf, len + 1);
-   vsnprintf(ptr, len + 1, fmt, args);
+   char* ptr = stbds_arraddnptr(*buf, len);
+   vsnprintf(ptr, len, fmt, args);
 }
 
 static void
 BufPushLen(char** buf, const char* str, int len)
 {
-   char* ptr = stbds_arraddnptr(*buf, len);
-   memcpy(ptr, str, len);
+   memcpy(stbds_arraddnptr(*buf, len), str, len);
 }
 
 static void
@@ -84,7 +83,7 @@ static char*
 Compress(const char* in, int* out_len, bool* out_comp)
 {
    int len = strlen(in);
-   if (len <= BRUT_MIN_COMPRESS_SIZE) {
+   if (len <= BRUT_FILE_MIN_COMPRESS_SIZE) {
       *out_len  = len;
       *out_comp = false;
       return CopyString(in);
