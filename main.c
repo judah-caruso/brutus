@@ -87,17 +87,19 @@ static char* GetChunk(const char*, int*);
 static int LuaLoadChunkFromBundle(lua_State*);
 
 const char* LUA_REQUIRE_OVERLOAD_SOURCE =
-   "local __oldrequire = require\n"
+   "local __require = require\n"
    "require = function(name)\n"
-   "  if package.preload[name] ~= nil then\n"
-   "     return package.preload[name]()\n"
+   "  if package.loaded[name] ~= nil then\n"
+   "     return package.loaded[name]\n"
    "  end\n"
-   "  local mod = ___loadchunkfrombundle___(name)\n"
-   "  if mod ~= nil then\n"
-   "     package.preload[name] = loadstring(mod)\n"
-   "     return package.preload[name]()\n"
+   "  local chunk = ___loadchunkfrombundle___(name)\n"
+   "  if chunk ~= nil then\n"
+   "     local loader = loadstring(chunk)\n"
+   "     package.preload[name] = loader\n"
+   "     package.loaded[name]  = loader()\n"
+   "     return package.loaded[name]\n"
    "  end\n"
-   "  return __oldrequire(name)\n"
+   "  return __require(name)\n"
    "end"
 ;
 
