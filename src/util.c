@@ -101,7 +101,7 @@ Compress(const char* in, int len, int* out_len, bool* out_comp)
 }
 
 static char*
-Decompress(const char* in, int len)
+Decompress(const char* in, int len, int* out_len)
 {
    int maxlen = len * 2;
    char* buf = malloc(maxlen);
@@ -113,6 +113,7 @@ Decompress(const char* in, int len)
       return 0;
    }
 
+   *out_len = outlen;
    return buf;
 }
 

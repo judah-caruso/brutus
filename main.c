@@ -83,7 +83,7 @@
 
 static char* LoadBrutFile(const char*, int* out_len);
 static bool CreateBrutFile(const char*);
-static char* GetChunk(const char*);
+static char* GetChunk(const char*, int*);
 static int LuaLoadChunkFromBundle(lua_State*);
 
 const char* LUA_REQUIRE_OVERLOAD_SOURCE =
@@ -108,14 +108,11 @@ const char* LUA_REQUIRE_OVERLOAD_SOURCE =
 
 char** MODULES = 0;
 char** CHUNKS  = 0;
+int*   LENGTHS = 0;
 
 int
 main(int argc, char* argv[])
 {
-   #if __BRUT_RUN_TESTS
-      return RunLoadTests();
-   #endif
-
    char* exe_name = "brutus";
    if (argc > 0)
       { exe_name = argv[0]; }
@@ -126,6 +123,12 @@ main(int argc, char* argv[])
       int len = strlen(argv[0]);
       if (strncmp(argv[0], "ship", len) == 0)
          { ship = true; }
+
+   #if __BRUT_RUN_TESTS
+      if (strncmp(argv[0], "test", len) == 0) {
+         return RunLoadTests();
+      }
+   #endif
 
       if (strncmp(argv[0], "-h", len) == 0) {
          printf("brutus version %s (%d.%d)\n   usage: %s [-h] -- <args>\n", BRUTUS_VERSION, BRUT_FILE_MINOR, BRUT_FILE_MAJOR, exe_name);
@@ -205,7 +208,7 @@ main(int argc, char* argv[])
 
    int exit_code = 0;
 
-   if (!chunk) {
+   if (!chunk || chunk_len == 0) {
       // If we're bundled with no main chunk, the brut file
       // didn't contain one, and that's not necessarily an error.
       if (bundled) {
@@ -254,22 +257,25 @@ LuaLoadChunkFromBundle(lua_State* l)
    }
 
    const char* module = lua_tostring(l, top);
-   char* chunk = GetChunk(module);
-   if (!chunk) {
+
+   int chunk_len = 0;
+   char* chunk = GetChunk(module, &chunk_len);
+   if (!chunk || chunk_len == 0) {
       lua_pushnil(l);
       return 1;
    }
 
-   lua_pushstring(l, chunk);
+   lua_pushlstring(l, chunk, chunk_len);
    return 1;
 }
 
 static char*
-GetChunk(const char* module)
+GetChunk(const char* module, int* out_len)
 {
    int len = strlen(module);
    for (int i = 0; i < stbds_arrlen(MODULES); i += 1) {
       if (strncmp(module, MODULES[i], len) == 0) {
+         *out_len = LENGTHS[i];
          return CHUNKS[i];
       }
    }
@@ -327,9 +333,11 @@ LoadBrutFile(const char* path, int* out_len)
          return 0;
       }
 
+      int chunk_len = decoded_length;
+
       char* chunk = decoded;
       if (compressed) {
-         char* decomp = Decompress(decoded, decoded_length);
+         char* decomp = Decompress(decoded, decoded_length, &chunk_len);
          if (!decomp) {
             Log("failed to decompress entry %d (%d, %d)", i, entry_length, decoded_length);
             return 0;
@@ -341,19 +349,15 @@ LoadBrutFile(const char* path, int* out_len)
 
       stbds_arrput(MODULES, CopyString(name));
       stbds_arrput(CHUNKS, chunk);
+      stbds_arrput(LENGTHS, chunk_len);
 
       off += entry_length;
    }
 
    // the entrypoint chunk will always be called 'main'
-   char* chunk = GetChunk("main");
-   if (chunk) // @todo: GetChunk should return the length
-      { *out_len = strlen(chunk); }
-
-   return chunk;
+   return GetChunk("main", out_len);
 }
 
-/*
 static int
 BytecodeWriter(lua_State* l, const void* p, size_t len, void* ud)
 {
@@ -364,13 +368,13 @@ BytecodeWriter(lua_State* l, const void* p, size_t len, void* ud)
 }
 
 static char*
-SourceToBytecode(const char* source, int* out_len)
+SourceToBytecode(const char* name, const char* source, int* out_len)
 {
    char* buffer = 0;
    struct { char** buffer; int count; } user_data;
 
    lua_State* l = luaL_newstate();
-   if (luaL_loadbuffer(l, source, strlen(source), "source.lua") != 0)
+   if (luaL_loadbuffer(l, source, strlen(source), name) != 0)
       { return 0; }
 
    user_data.buffer = &buffer;
@@ -384,7 +388,6 @@ SourceToBytecode(const char* source, int* out_len)
    lua_close(l);
    return buffer;
 }
-*/
 
 static bool
 CreateBrutFile(const char* path)
@@ -450,12 +453,12 @@ CreateBrutFile(const char* path)
       char* name = names[i];
       Log("processing '%s.lua'", name);
 
-      // int bytecode_len = 0;
-      // char* bytecode = SourceToBytecode(files[i], &bytecode_len);
+      int bc_len = 0;
+      char* bc = SourceToBytecode(name, files[i], &bc_len);
 
       bool did_comp = false;
       int comp_len = 0;
-      char* comp = Compress(files[i], strlen(files[i]), &comp_len, &did_comp);
+      char* comp = Compress(bc, bc_len, &comp_len, &did_comp);
 
       int enc_len = 0;
       char* enc = Encode(comp, comp_len, &enc_len);

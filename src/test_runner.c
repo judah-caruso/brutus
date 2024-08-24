@@ -31,8 +31,10 @@ RunLoadTests()
    int pass = 0;
    for (int i = 0; i < stbds_arrlen(datfiles); i += 1) {
       char* entry = datfiles[i];
-      char* chunk = LoadBrutFile(entry);
-      if (!chunk) {
+
+      int out_len = 0;
+      char* chunk = LoadBrutFile(entry, &out_len);
+      if (!chunk || out_len == 0) {
          Log("%s fail", entry);
       }
       else {
