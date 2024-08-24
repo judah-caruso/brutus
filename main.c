@@ -374,14 +374,18 @@ SourceToBytecode(const char* name, const char* source, int* out_len)
    struct { char** buffer; int count; } user_data;
 
    lua_State* l = luaL_newstate();
-   if (luaL_loadbuffer(l, source, strlen(source), name) != 0)
-      { return 0; }
+   if (luaL_loadbuffer(l, source, strlen(source), name) != 0) {
+      Log("failed to load '%s.lua'\n   %s", name, lua_tostring(l, -1));
+      return 0;
+   }
 
    user_data.buffer = &buffer;
    user_data.count  = 0;
 
-   if (lua_dump(l, BytecodeWriter, &user_data) != 0)
-      { return 0; }
+   if (lua_dump(l, BytecodeWriter, &user_data) != 0) {
+      Log("failed to dump bytecode for '%s.lua'", name);
+      return 0;
+   }
 
    *out_len = user_data.count;
 
@@ -455,6 +459,8 @@ CreateBrutFile(const char* path)
 
       int bc_len = 0;
       char* bc = SourceToBytecode(name, files[i], &bc_len);
+      if (!bc || bc_len == 0)
+         { return false; }
 
       bool did_comp = false;
       int comp_len = 0;
