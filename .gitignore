@@ -2,6 +2,7 @@
 brut
 brut.dat
 brutus
+*.lua
 *.pdb
 *.obj
 *.exp
