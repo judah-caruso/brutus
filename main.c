@@ -28,8 +28,10 @@
    #include <windows.h>
    #include <shlwapi.h>
 #elif defined(__APPLE__) || defined(__unix__)
+   #include <unistd.h>
    #include <dirent.h>
    #include <sys/stat.h>
+   #include <sys/param.h>
 #endif
 
 #include "lua.h"
@@ -79,8 +81,8 @@
 
 #include "lib_platform.c"
 
-static char* LoadBrutFile();
-static bool CreateBrutFile();
+static char* LoadBrutFile(const char*);
+static bool CreateBrutFile(const char*);
 static char* GetChunk(const char*);
 static int LuaLoadChunkFromBundle(lua_State*);
 
@@ -99,6 +101,10 @@ const char* LUA_REQUIRE_OVERLOAD_SOURCE =
    "end"
 ;
 
+#define __BRUT_RUN_TESTS 0
+#if __BRUT_RUN_TESTS
+   #include "test_runner.c"
+#endif
 
 char** MODULES = 0;
 char** CHUNKS  = 0;
@@ -106,6 +112,10 @@ char** CHUNKS  = 0;
 int
 main(int argc, char* argv[])
 {
+   #if __BRUT_RUN_TESTS
+      return RunLoadTests();
+   #endif
+
    char* exe_name = "brutus";
    if (argc > 0)
       { exe_name = argv[0]; }
@@ -134,7 +144,7 @@ main(int argc, char* argv[])
 
    // if 'ship' was passed we should create a brut file rather than run one.
    if (ship) {
-      if (!CreateBrutFile()) {
+      if (!CreateBrutFile(BRUT_FILE)) {
          Log("unable to create %s", BRUT_FILE);
          return 2;
       }
@@ -144,18 +154,17 @@ main(int argc, char* argv[])
    }
 
    char* exe_path = GetExePath();
-   for (int i = strlen(exe_path); i >= 0; i -= 1) {
    #if defined(PLATFORM_WINDOWS)
-      if (exe_path[i] == '\\') {
-         exe_path[i] = '\0';
-         break;
-      }
+      char path_sep = '\\';
    #else
-      if (exe_path[i] == '/') {
+      char path_sep = '/';
+   #endif
+
+   for (int i = strlen(exe_path); i >= 0; i -= 1) {
+      if (exe_path[i] == path_sep) {
          exe_path[i] = '\0';
          break;
       }
-   #endif
    }
 
    if (!SetWorkingDirectory(exe_path)) {
@@ -175,7 +184,7 @@ main(int argc, char* argv[])
 
    // try to load brut.dat or main.lua
    if (bundled) {
-      chunk = LoadBrutFile();
+      chunk = LoadBrutFile(BRUT_FILE);
 
       // if we're in a bundled context, overload 'require' to look
       // for modules contained within the bundle.
@@ -265,9 +274,9 @@ GetChunk(const char* module)
 }
 
 static char*
-LoadBrutFile()
+LoadBrutFile(const char* path)
 {
-   char* datfile = ReadEntireFile(BRUT_FILE);
+   char* datfile = ReadEntireFile(path);
    if (!datfile)
       { return 0; }
 
@@ -337,7 +346,7 @@ LoadBrutFile()
 }
 
 static bool
-CreateBrutFile()
+CreateBrutFile(const char* path)
 {
    char** files = 0;
    char** names = 0;
@@ -421,7 +430,7 @@ CreateBrutFile()
    stbds_arrfree(files);
    stbds_arrfree(names);
 
-   if (!WriteEntireFile(BRUT_FILE, buffer, stbds_arrlen(buffer))) {
+   if (!WriteEntireFile(path, buffer, stbds_arrlen(buffer))) {
       stbds_arrfree(buffer);
       Log("failed to create %s", BRUT_FILE);
       return false;

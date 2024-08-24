@@ -145,7 +145,7 @@ SetWorkingDirectory(const char* path)
 #if defined(PLATFORM_WINDOWS)
    return SetCurrentDirectory(path);
 #else
-   return false; // @todo: unix
+   return chdir(path) == 0;
 #endif
 }
 
@@ -160,8 +160,23 @@ GetExePath()
 
    buf[l] = '\0';
    return CopyString(buf);
+#elif defined(PLATFORM_DARWIN)
+   char buf[MAXPATHLEN] = {0};
+
+   int len = MAXPATHLEN;
+   if (_NSGetExecutablePath(buf, &len) != 0)
+      { return 0; }
+
+   return CopyString(buf);
 #else
-   return ""; // @todo: unix
+   char buf[PATH_MAX] = {0};
+
+   int len = readlink("/proc/self/exe", buf, PATH_MAX);
+   if (len == -1)
+      { return 0; }
+
+   buf[len] = '\0';
+   return CopyString(buf);
 #endif
 }
 
