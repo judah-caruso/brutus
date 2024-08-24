@@ -79,9 +79,8 @@ BufPush(char** buf, const char* str)
 }
 
 static char*
-Compress(const char* in, int* out_len, bool* out_comp)
+Compress(const char* in, int len, int* out_len, bool* out_comp)
 {
-   int len = strlen(in);
    if (len <= BRUT_FILE_MIN_COMPRESS_SIZE) {
       *out_len  = len;
       *out_comp = false;

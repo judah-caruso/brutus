@@ -81,7 +81,7 @@
 
 #include "lib_platform.c"
 
-static char* LoadBrutFile(const char*);
+static char* LoadBrutFile(const char*, int* out_len);
 static bool CreateBrutFile(const char*);
 static char* GetChunk(const char*);
 static int LuaLoadChunkFromBundle(lua_State*);
@@ -173,8 +173,10 @@ main(int argc, char* argv[])
    }
 
    lua_State* L = luaL_newstate();
-   char* chunk  = 0;
    bool bundled = FileExists(BRUT_FILE);
+
+   char* chunk   = 0;
+   int chunk_len = 0;
 
    // setup the runtime and open all extension libraries
    {
@@ -184,7 +186,7 @@ main(int argc, char* argv[])
 
    // try to load brut.dat or main.lua
    if (bundled) {
-      chunk = LoadBrutFile(BRUT_FILE);
+      chunk = LoadBrutFile(BRUT_FILE, &chunk_len);
 
       // if we're in a bundled context, overload 'require' to look
       // for modules contained within the bundle.
@@ -196,6 +198,8 @@ main(int argc, char* argv[])
    }
    else {
       chunk = ReadEntireFile("main.lua");
+      if (chunk)
+         { chunk_len = strlen(chunk); }
    }
 
 
@@ -216,7 +220,7 @@ main(int argc, char* argv[])
 
    // load and run the entrypoint chunk.
    luaJIT_setmode(L, 0, LUAJIT_MODE_ENGINE | LUAJIT_MODE_MAX);
-   if (luaL_loadbuffer(L, chunk, strlen(chunk), "main.lua") != 0) {
+   if (luaL_loadbuffer(L, chunk, chunk_len, "main.lua") != 0) {
       if (bundled) {
          Log("failed to load entrypoint chunk");
       }
@@ -274,7 +278,7 @@ GetChunk(const char* module)
 }
 
 static char*
-LoadBrutFile(const char* path)
+LoadBrutFile(const char* path, int* out_len)
 {
    char* datfile = ReadEntireFile(path);
    if (!datfile)
@@ -342,8 +346,45 @@ LoadBrutFile(const char* path)
    }
 
    // the entrypoint chunk will always be called 'main'
-   return GetChunk("main");
+   char* chunk = GetChunk("main");
+   if (chunk) // @todo: GetChunk should return the length
+      { *out_len = strlen(chunk); }
+
+   return chunk;
 }
+
+/*
+static int
+BytecodeWriter(lua_State* l, const void* p, size_t len, void* ud)
+{
+   struct { char** buffer; int count; } *data = ud;
+   BufPushLen(data->buffer, (char *)p, (int)len);
+   data->count += len;
+   return 0;
+}
+
+static char*
+SourceToBytecode(const char* source, int* out_len)
+{
+   char* buffer = 0;
+   struct { char** buffer; int count; } user_data;
+
+   lua_State* l = luaL_newstate();
+   if (luaL_loadbuffer(l, source, strlen(source), "source.lua") != 0)
+      { return 0; }
+
+   user_data.buffer = &buffer;
+   user_data.count  = 0;
+
+   if (lua_dump(l, BytecodeWriter, &user_data) != 0)
+      { return 0; }
+
+   *out_len = user_data.count;
+
+   lua_close(l);
+   return buffer;
+}
+*/
 
 static bool
 CreateBrutFile(const char* path)
@@ -392,7 +433,6 @@ CreateBrutFile(const char* path)
    // minor version (byte >= 0)
    // total entries (unsigned 16-bit integer)
    char* buffer = 0;
-
    BufPrint(&buffer, "brut%c%c", BRUT_FILE_MAJOR, BRUT_FILE_MINOR);
 
    unsigned short total_names = stbds_arrlen(names);
@@ -410,18 +450,21 @@ CreateBrutFile(const char* path)
       char* name = names[i];
       Log("processing '%s.lua'", name);
 
-      bool did_comp = false;
-      int comp_size = 0;
-      char* comp = Compress(files[i], &comp_size, &did_comp);
+      // int bytecode_len = 0;
+      // char* bytecode = SourceToBytecode(files[i], &bytecode_len);
 
-      int enc_size = 0;
-      char* enc = Encode(comp, comp_size, &enc_size);
+      bool did_comp = false;
+      int comp_len = 0;
+      char* comp = Compress(files[i], strlen(files[i]), &comp_len, &did_comp);
+
+      int enc_len = 0;
+      char* enc = Encode(comp, comp_len, &enc_len);
 
       BufPush(&buffer, name);
       BufPushLen(&buffer, "\0", 1);
       BufPushLen(&buffer, (char *)&did_comp, 1);
-      BufPushLen(&buffer, (char *)&enc_size, 4);
-      BufPushLen(&buffer, enc, enc_size);
+      BufPushLen(&buffer, (char *)&enc_len, 4);
+      BufPushLen(&buffer, enc, enc_len);
 
       free(comp);
       free(enc);
