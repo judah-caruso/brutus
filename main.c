@@ -47,8 +47,9 @@
 
 #define BRUT_FILE "brut.dat"
 #define BRUT_FILE_MAJOR 1
-#define BRUT_FILE_MINOR 0
+#define BRUT_FILE_MINOR 1
 #define BRUT_FILE_MIN_COMPRESS_SIZE 16
+#define BRUT_FILE_CUSTOM_DATA "jit 2.1\0"
 
 #if defined(_WIN32) || defined(_WIN64)
    #define OS_NAME "windows"
@@ -315,6 +316,14 @@ LoadBrutFile(const char* path, int* out_len)
    unsigned short total_entries = *((unsigned short*)&datfile[off]);
    off += 2;
 
+   char* app_data = &datfile[off];
+   off += 8;
+
+   if (memcmp(app_data, BRUT_FILE_CUSTOM_DATA, 8) != 0) {
+      Log("unsupported %s file", BRUT_FILE);
+      return 0;
+   }
+
    // decode and decompress each chunk in the file
    for (int i = 0; i < total_entries; i += 1) {
       char* name = &datfile[off];
@@ -442,10 +451,14 @@ CreateBrutFile(const char* path)
    // minor version (byte >= 0)
    // total entries (unsigned 16-bit integer)
    char* buffer = 0;
-   BufPrint(&buffer, "brut%c%c", BRUT_FILE_MAJOR, BRUT_FILE_MINOR);
+
+   BufPush(&buffer, "brut");
+   stbds_arrput(buffer, BRUT_FILE_MAJOR);
+   stbds_arrput(buffer, BRUT_FILE_MINOR);
 
    unsigned short total_names = stbds_arrlen(names);
    BufPushLen(&buffer, (char *)&total_names, 2);
+   BufPushLen(&buffer, BRUT_FILE_CUSTOM_DATA, 8);
 
    // entries are placed sequentially and have the following structure:
    // name (null-terminated string)

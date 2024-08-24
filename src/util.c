@@ -62,16 +62,6 @@ CopyString(const char* str)
 }
 
 static void
-BufPrint(char** buf, const char* fmt, ...) {
-   va_list args;
-   va_start(args, fmt);
-   size_t len = vsnprintf(NULL, 0, fmt, args);
-   char* ptr = stbds_arraddnptr(*buf, len);
-   vsnprintf(ptr, len, fmt, args);
-   va_end(args);
-}
-
-static void
 BufPushLen(char** buf, const char* str, int len)
 {
    memcpy(stbds_arraddnptr(*buf, len), str, len);
