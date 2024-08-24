@@ -36,6 +36,8 @@ LuaPlatformReadall(lua_State* l)
    }
 
    lua_pushstring(l, data);
+   free(data);
+
    return 1;
 }
 
