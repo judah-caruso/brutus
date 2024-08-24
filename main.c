@@ -450,6 +450,7 @@ CreateBrutFile(const char* path)
    // major version (byte > 0)
    // minor version (byte >= 0)
    // total entries (unsigned 16-bit integer)
+   // app metadata (8-bytes)
    char* buffer = 0;
 
    BufPush(&buffer, "brut");
