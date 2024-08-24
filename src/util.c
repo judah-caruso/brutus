@@ -47,13 +47,18 @@ EndsWith(const char* str, const char* suffix)
 }
 
 static char*
-CopyString(const char* str)
+CopyStringLen(const char* str, int len)
 {
-   int len = strlen(str);
    char* ptr = malloc(len + 1);
    memcpy(ptr, str, len);
    ptr[len] = '\0';
    return ptr;
+}
+
+static char*
+CopyString(const char* str)
+{
+   return CopyStringLen(str, strlen(str));
 }
 
 static void
@@ -103,7 +108,7 @@ Compress(const char* in, int len, int* out_len, bool* out_comp)
 static char*
 Decompress(const char* in, int len, int* out_len)
 {
-   int maxlen = len * 2;
+   int maxlen = (int)(((float)len) * 3.5f); // @todo: way to calc this without being wasteful?
    char* buf = malloc(maxlen);
    memset(buf, 0, maxlen);
 
@@ -114,7 +119,10 @@ Decompress(const char* in, int len, int* out_len)
    }
 
    *out_len = outlen;
-   return buf;
+   char* out = CopyStringLen(buf, outlen);
+   free(buf);
+
+   return out;
 }
 
 static char*
