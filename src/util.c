@@ -62,13 +62,13 @@ CopyString(const char* str)
 }
 
 static void
-BufPushLen(char** buf, const char* str, int len)
+BufPushLen(dyn_array_t(char)* buf, const char* str, int len)
 {
    memcpy(stbds_arraddnptr(*buf, len), str, len);
 }
 
 static void
-BufPush(char** buf, const char* str)
+BufPush(dyn_array_t(char)* buf, const char* str)
 {
    BufPushLen(buf, str, strlen(str));
 }
@@ -179,7 +179,7 @@ GetExePath()
 }
 
 static bool
-ListDirectory(const char* path, char*** out_entries)
+ListDirectory(const char* path, dyn_array_t(char*)* out_entries)
 {
 #if defined(PLATFORM_WINDOWS)
    WIN32_FIND_DATA fd = {0};

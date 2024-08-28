@@ -19,7 +19,7 @@
 // SOFTWARE.
 
 static int
-LuaPlatformReadall(lua_State* l)
+LuaBrutusReadall(lua_State* l)
 {
    int top = lua_gettop(l);
    if (!lua_isstring(l, top)) {
@@ -42,20 +42,22 @@ LuaPlatformReadall(lua_State* l)
 }
 
 static void
-OpenPlatform(lua_State* l, bool bundle)
+OpenBrutusLib(lua_State* l, bool bundle)
 {
-   luaL_register(l, "platform", (luaL_Reg[]){
-      { "readall", LuaPlatformReadall },
-      { 0, 0 },
-   });
+   lua_newtable(l);
+   {
+      lua_pushcfunction(l, LuaBrutusReadall);
+      lua_setfield(l, -2, "readall");
 
-   lua_pushstring(l, OS_NAME);
-   lua_setfield(l, -2, "os");
+      lua_pushstring(l, OS_NAME);
+      lua_setfield(l, -2, "os");
 
-   lua_pushstring(l, ARCH_NAME);
-   lua_setfield(l, -2, "arch");
+      lua_pushstring(l, ARCH_NAME);
+      lua_setfield(l, -2, "arch");
 
-   lua_pushboolean(l, bundle);
-   lua_setfield(l, -2, "bundle");
+      lua_pushboolean(l, bundle);
+      lua_setfield(l, -2, "bundle");
+   }
+   lua_setfield(l, LUA_GLOBALSINDEX, "brutus");
 }
 

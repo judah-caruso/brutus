@@ -12,13 +12,13 @@ RunLoadTests()
    if (!SetWorkingDirectory(TEST_PATH))
       { return 1; }
 
-   char** entries = {0};
+   dyn_array_t(char*) entries = 0;
    if (!ListDirectory(TEST_GLOB, &entries)) {
       Log("unable to get test files");
       return 1;
    }
 
-   char** datfiles = {0};
+   dyn_array_t(char*) datfiles = 0;
    for (int i = 0; i < stbds_arrlen(entries); i += 1) {
       char* entry = entries[i];
       if (EndsWith(entry, ".dat")) {

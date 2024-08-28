@@ -43,6 +43,8 @@
 #define STBDS_NO_SHORT_NAMES
 #include "stb_ds.h"
 
+#define dyn_array_t(T) T*
+
 #define BRUTUS_VERSION "1.0.0"
 
 #define BRUT_FILE "brut.dat"
@@ -80,7 +82,7 @@
 #include "fastlz.c"
 #include "util.c"
 
-#include "lib_platform.c"
+#include "lib_brutus.c"
 
 static char* LoadBrutFile(const char*, int* out_len);
 static bool CreateBrutFile(const char*);
@@ -109,9 +111,9 @@ const char* LUA_REQUIRE_OVERLOAD_SOURCE =
    #include "test_runner.c"
 #endif
 
-char** MODULES = 0;
-char** CHUNKS  = 0;
-int*   LENGTHS = 0;
+dyn_array_t(char*) MODULES = 0;
+dyn_array_t(char*) CHUNKS  = 0;
+dyn_array_t(int)   LENGTHS = 0;
 
 int
 main(int argc, char* argv[])
@@ -124,8 +126,6 @@ main(int argc, char* argv[])
    bool ship = false;
    while (argc > 0) {
       int len = strlen(argv[0]);
-      if (strncmp(argv[0], "ship", len) == 0)
-         { ship = true; }
 
    #if __BRUT_RUN_TESTS
       if (strncmp(argv[0], "test", len) == 0) {
@@ -137,6 +137,9 @@ main(int argc, char* argv[])
          printf("brutus version %s (%d.%d)\n   usage: %s [-h] -- <args>\n", BRUTUS_VERSION, BRUT_FILE_MINOR, BRUT_FILE_MAJOR, exe_name);
          return 0;
       }
+
+      if (strncmp(argv[0], "ship", len) == 0)
+         { ship = true; }
 
       if (strncmp(argv[0], "--", len) == 0) {
          argc -= 1;
@@ -187,7 +190,7 @@ main(int argc, char* argv[])
    // setup the runtime and open all extension libraries
    {
       luaL_openlibs(L);
-      OpenPlatform(L, bundled);
+      OpenBrutusLib(L, bundled);
    }
 
    // try to load brut.dat or main.lua
@@ -286,6 +289,10 @@ GetChunk(const char* module, int* out_len)
    return 0;
 }
 
+enum {
+   BRUT_CHUNK_FLAG_COMPRESSED = 1 << 0,
+};
+
 static char*
 LoadBrutFile(const char* path, int* out_len)
 {
@@ -312,8 +319,8 @@ LoadBrutFile(const char* path, int* out_len)
 
    off += 2;
 
-   // get number of entries in the brut file
-   unsigned short total_entries = *((unsigned short*)&datfile[off]);
+   // get number of chunks in the file
+   unsigned short total_chunks = *((unsigned short*)&datfile[off]);
    off += 2;
 
    char* app_data = &datfile[off];
@@ -325,11 +332,11 @@ LoadBrutFile(const char* path, int* out_len)
    }
 
    // decode and decompress each chunk in the file
-   for (int i = 0; i < total_entries; i += 1) {
+   for (int i = 0; i < total_chunks; i += 1) {
       char* name = &datfile[off];
       off += strlen(name) + 1;
 
-      bool compressed = datfile[off];
+      unsigned char flags = (unsigned char)datfile[off];
       off += 1;
 
       unsigned int entry_length = *((unsigned int*)&datfile[off]);
@@ -344,10 +351,10 @@ LoadBrutFile(const char* path, int* out_len)
          return 0;
       }
 
+      char* chunk = decoded;
       int chunk_len = decoded_length;
 
-      char* chunk = decoded;
-      if (compressed) {
+      if ((flags & BRUT_CHUNK_FLAG_COMPRESSED) == BRUT_CHUNK_FLAG_COMPRESSED) {
          char* decomp = Decompress(decoded, decoded_length, &chunk_len);
          if (!decomp) {
             Log("failed to decompress entry %d (%d, %d)", i, entry_length, decoded_length);
@@ -407,12 +414,12 @@ SourceToBytecode(const char* name, const char* source, int* out_len)
 static bool
 CreateBrutFile(const char* path)
 {
-   char** files = 0;
-   char** names = 0;
+   dyn_array_t(char*) files = 0;
+   dyn_array_t(char*) names = 0;
 
    // mark each .lua file for processing.
    // the order of files does not matter.
-   char** entries = 0;
+   dyn_array_t(char*) entries = 0;
 
    #if PLATFORM_WINDOWS
       ListDirectory("*.*", &entries);
@@ -451,7 +458,7 @@ CreateBrutFile(const char* path)
    // minor version (byte >= 0)
    // total entries (unsigned 16-bit integer)
    // app metadata (8-bytes)
-   char* buffer = 0;
+   dyn_array_t(char) buffer = 0;
 
    BufPush(&buffer, "brut");
    stbds_arrput(buffer, BRUT_FILE_MAJOR);
@@ -485,9 +492,12 @@ CreateBrutFile(const char* path)
       int enc_len = 0;
       char* enc = Encode(comp, comp_len, &enc_len);
 
+      unsigned char flags = 0;
+      if (did_comp) flags |= BRUT_CHUNK_FLAG_COMPRESSED;
+
       BufPush(&buffer, name);
       BufPushLen(&buffer, "\0", 1);
-      BufPushLen(&buffer, (char *)&did_comp, 1);
+      BufPushLen(&buffer, (char *)&flags, 1);
       BufPushLen(&buffer, (char *)&enc_len, 4);
       BufPushLen(&buffer, enc, enc_len);
 
